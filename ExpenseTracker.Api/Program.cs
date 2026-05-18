@@ -1,6 +1,6 @@
 // In .NET 6+, "top-level statements" let us write code at the file level
 // without a Main() method. This whole file IS the Main method.
-
+using ExpenseTracker.Infrastructure;
 var builder = WebApplication.CreateBuilder(args);
 
 // ---- SERVICE REGISTRATION ----
@@ -18,6 +18,9 @@ builder.Services.AddSwaggerGen();
 // Calling /health will return "Healthy" if the app is responding.
 // Later we'll add database checks, blob storage checks, etc.
 builder.Services.AddHealthChecks();
+
+// Wire up Infrastructure (DbContext, etc.) — extension method we just wrote.
+builder.Services.AddInfrastructure(builder.Configuration);
 
 var app = builder.Build();
 
