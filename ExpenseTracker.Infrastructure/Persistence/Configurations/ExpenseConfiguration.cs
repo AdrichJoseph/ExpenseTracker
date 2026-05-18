@@ -40,11 +40,16 @@ public class ExpenseConfiguration : IEntityTypeConfiguration<Expense>
             .HasForeignKey(e => e.CategoryId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // ApprovalHistory: one expense → many history entries
+       // ApprovalHistory: one expense → many history entries.
+        // The audit relationship is marked optional from EF's perspective for the
+        // same reason as the User→ApprovalHistory link: the audit trail must survive
+        // even if its parent entity is soft-deleted. The FK remains NOT NULL — only
+        // the C# navigation property is treated as optional in query planning.
         builder.HasMany(e => e.ApprovalHistory)
-            .WithOne(h => h.Expense)
+            .WithOne(h => h.Expense!)
             .HasForeignKey(h => h.ExpenseId)
-            .OnDelete(DeleteBehavior.Cascade);  // delete expense → delete its history
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.Cascade);
 
         // Indexes for the queries we'll write in Phase 7:
         // "all expenses for user X", "all expenses in status Y",

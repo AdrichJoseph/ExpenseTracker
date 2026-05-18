@@ -1,6 +1,8 @@
 // In .NET 6+, "top-level statements" let us write code at the file level
 // without a Main() method. This whole file IS the Main method.
 using ExpenseTracker.Infrastructure;
+using ExpenseTracker.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 var builder = WebApplication.CreateBuilder(args);
 
 // ---- SERVICE REGISTRATION ----
@@ -28,10 +30,14 @@ var app = builder.Build();
 // Middleware order matters — each piece processes the request in sequence.
 
 // Show Swagger UI only when running in Development mode.
+// ── Apply migrations and seed data on startup (Development only) ──
+// In production we'd run migrations as a deliberate CI/CD step, not on app start.
 if (app.Environment.IsDevelopment())
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    await db.Database.MigrateAsync();
+    await ExpenseTracker.Infrastructure.Persistence.Seed.DataSeeder.SeedAsync(db);
 }
 
 app.UseHttpsRedirection();
