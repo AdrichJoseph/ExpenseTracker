@@ -1,0 +1,38 @@
+# Build artifacts — never ship these; Docker rebuilds them inside the image.
+**/bin/
+**/obj/
+**/out/
+
+# Git history — image is a snapshot, doesn't need version history.
+.git/
+.gitignore
+.gitattributes
+
+# IDE / editor settings — irrelevant inside container.
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# Test outputs and coverage reports.
+TestResults/
+**/coverage/
+*.trx
+
+# Local databases — should never be inside an image.
+**/*.db
+**/*.db-shm
+**/*.db-wal
+
+# Documentation — not needed at runtime.
+README.md
+docs/
+
+# CI configuration — not needed at runtime.
+.github/
+
+# Secrets — paranoid prevention.
+*.env
+appsettings.Local.json
+secrets.json
