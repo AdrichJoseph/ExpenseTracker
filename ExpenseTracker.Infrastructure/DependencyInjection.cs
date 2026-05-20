@@ -20,9 +20,11 @@ public static class DependencyInjection
         services.AddDbContext<AppDbContext>(options =>
             options.UseSqlite(connectionString));
 
-        // The service registration that was missing — this fixes the 500.
+        // The service registration that was missing ï¿½ this fixes the 500.
         // Interface lives in Application, implementation lives in Infrastructure.
         services.AddScoped<IExpenseService, ExpenseService>();
+        services.AddScoped<ExpenseTracker.Application.Auth.IAuthService, ExpenseTracker.Infrastructure.Auth.AuthService>();
+        services.AddScoped<ExpenseTracker.Infrastructure.Auth.JwtTokenGenerator>();
 
         return services;
     }
