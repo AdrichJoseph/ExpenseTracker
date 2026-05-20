@@ -9,7 +9,6 @@ public class Expense : Entity
     // ── DATA ──────────────────────────────────────────────────────────
 
     public required Guid UserId { get; set; }
-    public User? User { get; set; }
 
     public required Guid CategoryId { get; set; }
     public Category? Category { get; set; }

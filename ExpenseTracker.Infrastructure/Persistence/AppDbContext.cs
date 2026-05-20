@@ -1,12 +1,16 @@
 using ExpenseTracker.Domain.Common;
 using ExpenseTracker.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
+using ExpenseTracker.Infrastructure.Identity;
+
+
 
 namespace ExpenseTracker.Infrastructure.Persistence;
 
 // DbContext is EF Core's session-scoped class. One DbContext = one unit of work.
 // In ASP.NET, we register it as Scoped (one per HTTP request).
-public class AppDbContext : DbContext
+public class AppDbContext : IdentityDbContext<User, AppRole, Guid>
 {
     // This constructor receives DbContextOptions configured in Program.cs.
     // Options carry the connection string, provider choice (SQLite vs SQL Server), etc.
@@ -18,7 +22,7 @@ public class AppDbContext : DbContext
     // Each DbSet<T> tells EF Core "T is a table". The property name becomes
     // the default table name (Users → "Users" table).
 
-    public DbSet<User> Users => Set<User>();
+
     public DbSet<Expense> Expenses => Set<Expense>();
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<ApprovalHistory> ApprovalHistory => Set<ApprovalHistory>();

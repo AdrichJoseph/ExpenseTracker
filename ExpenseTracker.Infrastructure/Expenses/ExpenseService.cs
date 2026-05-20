@@ -2,6 +2,7 @@ using ExpenseTracker.Application.Common;
 using ExpenseTracker.Application.Expenses;
 using ExpenseTracker.Application.Expenses.Dtos;
 using ExpenseTracker.Domain.Entities;
+using ExpenseTracker.Infrastructure.Identity;
 using ExpenseTracker.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,49 +12,40 @@ public class ExpenseService : IExpenseService
 {
     private readonly AppDbContext _db;
 
-    public ExpenseService(AppDbContext db)
-    {
-        _db = db;
-    }
+    public ExpenseService(AppDbContext db) => _db = db;
 
     public async Task<IReadOnlyList<ExpenseDto>> GetAllAsync(CancellationToken ct = default)
     {
-        return await _db.Expenses
-            .AsNoTracking()
-            .OrderByDescending(e => e.ExpenseDate)
-            .Select(e => new ExpenseDto(
-                e.Id,
-                e.UserId,
-                e.User!.Name,
-                e.CategoryId,
-                e.Category!.Name,
-                e.Amount,
-                e.Currency,
-                e.Description,
-                e.ExpenseDate,
-                e.SubmittedDate,
-                e.Status,
-                e.ReceiptBlobUrl,
-                e.ApproverId,
-                e.ApprovedDate,
-                e.RejectionReason,
-                e.CreatedAt,
-                e.UpdatedAt))
-            .ToListAsync(ct);
+        var query =
+            from e in _db.Expenses.AsNoTracking()
+            join u in _db.Users.AsNoTracking() on e.UserId equals u.Id
+            join c in _db.Categories.AsNoTracking() on e.CategoryId equals c.Id
+            orderby e.ExpenseDate descending
+            select new ExpenseDto(
+                e.Id, e.UserId, u.Name, e.CategoryId, c.Name,
+                e.Amount, e.Currency, e.Description, e.ExpenseDate,
+                e.SubmittedDate, e.Status, e.ReceiptBlobUrl,
+                e.ApproverId, e.ApprovedDate, e.RejectionReason,
+                e.CreatedAt, e.UpdatedAt);
+
+        return await query.ToListAsync(ct);
     }
 
     public async Task<Result<ExpenseDto>> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
-        var expense = await _db.Expenses
-            .AsNoTracking()
-            .Where(e => e.Id == id)
-            .Select(e => new ExpenseDto(
-                e.Id, e.UserId, e.User!.Name, e.CategoryId, e.Category!.Name,
+        var query =
+            from e in _db.Expenses.AsNoTracking()
+            join u in _db.Users.AsNoTracking() on e.UserId equals u.Id
+            join c in _db.Categories.AsNoTracking() on e.CategoryId equals c.Id
+            where e.Id == id
+            select new ExpenseDto(
+                e.Id, e.UserId, u.Name, e.CategoryId, c.Name,
                 e.Amount, e.Currency, e.Description, e.ExpenseDate,
                 e.SubmittedDate, e.Status, e.ReceiptBlobUrl,
                 e.ApproverId, e.ApprovedDate, e.RejectionReason,
-                e.CreatedAt, e.UpdatedAt))
-            .FirstOrDefaultAsync(ct);
+                e.CreatedAt, e.UpdatedAt);
+
+        var expense = await query.FirstOrDefaultAsync(ct);
 
         return expense is null
             ? Result<ExpenseDto>.NotFound($"Expense {id} not found.")
@@ -94,7 +86,6 @@ public class ExpenseService : IExpenseService
         CancellationToken ct = default)
     {
         var expense = await _db.Expenses.FindAsync(new object[] { id }, ct);
-
         if (expense is null)
             return Result<ExpenseDto>.NotFound($"Expense {id} not found.");
 
@@ -120,7 +111,6 @@ public class ExpenseService : IExpenseService
     public async Task<Result<bool>> DeleteAsync(Guid id, CancellationToken ct = default)
     {
         var expense = await _db.Expenses.FindAsync(new object[] { id }, ct);
-
         if (expense is null)
             return Result<bool>.NotFound($"Expense {id} not found.");
 

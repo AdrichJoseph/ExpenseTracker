@@ -1,48 +1,89 @@
+ï»¿using System.Text;
 using ExpenseTracker.Application;
 using ExpenseTracker.Infrastructure;
+using ExpenseTracker.Infrastructure.Identity;
 using ExpenseTracker.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ---- SERVICE REGISTRATION ----
 builder.Services.AddControllers();
-
-// OpenAPI / Swagger
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// Health checks
 builder.Services.AddHealthChecks();
 
-// Wire up Infrastructure (DbContext, repositories, services)
 builder.Services.AddInfrastructure(builder.Configuration);
-
-// Wire up Application (validators, handlers — empty for now)
 builder.Services.AddApplication();
+
+builder.Services
+    .AddIdentity<User, AppRole>(options =>
+    {
+        options.Password.RequireDigit = true;
+        options.Password.RequireLowercase = true;
+        options.Password.RequireUppercase = true;
+        options.Password.RequireNonAlphanumeric = false;
+        options.Password.RequiredLength = 8;
+        options.User.RequireUniqueEmail = true;
+    })
+    .AddEntityFrameworkStores<AppDbContext>()
+    .AddDefaultTokenProviders();
+
+var jwtSection = builder.Configuration.GetSection("Jwt");
+var jwtKey = jwtSection["Key"] ?? throw new InvalidOperationException("Jwt:Key missing");
+var jwtIssuer = jwtSection["Issuer"] ?? "ExpenseTracker";
+var jwtAudience = jwtSection["Audience"] ?? "ExpenseTracker";
+
+builder.Services
+    .AddAuthentication(options =>
+    {
+        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+    })
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = jwtIssuer,
+            ValidAudience = jwtAudience,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
+            ClockSkew = TimeSpan.FromMinutes(1)
+        };
+    });
+
+builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
-// ---- STARTUP TASKS (Development only) ----
-// Apply migrations and seed data automatically.
 if (app.Environment.IsDevelopment())
 {
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    await db.Database.MigrateAsync();
-    await ExpenseTracker.Infrastructure.Persistence.Seed.DataSeeder.SeedAsync(db);
-}
 
-// ---- HTTP REQUEST PIPELINE ----
-// Middleware order matters — each piece processes the request in sequence.
+    if (db.Database.IsSqlite())
+        await db.Database.MigrateAsync();
+    else
+        await db.Database.EnsureCreatedAsync();
+
+    await ExpenseTracker.Infrastructure.Persistence.Seed.DataSeeder.SeedAsync(scope.ServiceProvider);
+}
 
 if (app.Environment.IsDevelopment())
 {
-    app.UseSwagger();      // exposes the raw OpenAPI JSON at /swagger/v1/swagger.json
-    app.UseSwaggerUI();    // serves the interactive UI at /swagger
+    app.UseSwagger();
+    app.UseSwaggerUI();
 }
 
 app.UseHttpsRedirection();
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapHealthChecks("/health");
 app.MapControllers();
