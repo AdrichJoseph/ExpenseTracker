@@ -2,6 +2,7 @@ using ExpenseTracker.Application.Auth;
 using ExpenseTracker.Application.Auth.Dtos;
 using ExpenseTracker.Application.Common;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 
 namespace ExpenseTracker.Api.Controllers;
 
@@ -14,6 +15,7 @@ public class AuthController : ControllerBase
     public AuthController(IAuthService auth) => _auth = auth;
 
     [HttpPost("login")]
+    [AllowAnonymous]
     public async Task<ActionResult<AuthResponse>> Login(
         [FromBody] LoginRequest request, CancellationToken ct)
     {
@@ -24,6 +26,7 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("register")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<AuthResponse>> Register(
         [FromBody] RegisterRequest request, CancellationToken ct)
     {

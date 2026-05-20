@@ -2,6 +2,7 @@ using ExpenseTracker.Application.Common;
 using ExpenseTracker.Application.Expenses;
 using ExpenseTracker.Application.Expenses.Dtos;
 using ExpenseTracker.Domain.Entities;
+using ExpenseTracker.Domain.Enums;
 using ExpenseTracker.Infrastructure.Identity;
 using ExpenseTracker.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -14,10 +15,33 @@ public class ExpenseService : IExpenseService
 
     public ExpenseService(AppDbContext db) => _db = db;
 
-    public async Task<IReadOnlyList<ExpenseDto>> GetAllAsync(CancellationToken ct = default)
+    // Builds the base expense query, scoped to what the caller is allowed to see.
+    // Admin: everything. Manager: own + direct reports'. Employee: own only.
+    private IQueryable<Expense> VisibleExpenses(CurrentUser caller)
+    {
+        var query = _db.Expenses.AsNoTracking();
+
+        if (caller.Role == Role.Admin)
+            return query;
+
+        if (caller.Role == Role.Manager)
+        {
+            // Own expenses, plus expenses of users who report to this manager.
+            var reportIds = _db.Users
+                .Where(u => u.ManagerId == caller.Id)
+                .Select(u => u.Id);
+
+            return query.Where(e => e.UserId == caller.Id || reportIds.Contains(e.UserId));
+        }
+
+        // Employee: only their own.
+        return query.Where(e => e.UserId == caller.Id);
+    }
+
+    public async Task<IReadOnlyList<ExpenseDto>> GetAllAsync(CurrentUser caller, CancellationToken ct = default)
     {
         var query =
-            from e in _db.Expenses.AsNoTracking()
+            from e in VisibleExpenses(caller)
             join u in _db.Users.AsNoTracking() on e.UserId equals u.Id
             join c in _db.Categories.AsNoTracking() on e.CategoryId equals c.Id
             orderby e.ExpenseDate descending
@@ -31,10 +55,10 @@ public class ExpenseService : IExpenseService
         return await query.ToListAsync(ct);
     }
 
-    public async Task<Result<ExpenseDto>> GetByIdAsync(Guid id, CancellationToken ct = default)
+    public async Task<Result<ExpenseDto>> GetByIdAsync(Guid id, CurrentUser caller, CancellationToken ct = default)
     {
         var query =
-            from e in _db.Expenses.AsNoTracking()
+            from e in VisibleExpenses(caller)
             join u in _db.Users.AsNoTracking() on e.UserId equals u.Id
             join c in _db.Categories.AsNoTracking() on e.CategoryId equals c.Id
             where e.Id == id
@@ -48,17 +72,20 @@ public class ExpenseService : IExpenseService
         var expense = await query.FirstOrDefaultAsync(ct);
 
         return expense is null
-            ? Result<ExpenseDto>.NotFound($"Expense {id} not found.")
+            ? Result<ExpenseDto>.NotFound($"Expense {id} not found or not accessible.")
             : Result<ExpenseDto>.Success(expense);
     }
 
     public async Task<Result<ExpenseDto>> CreateAsync(
-        CreateExpenseRequest request,
-        CancellationToken ct = default)
+        CreateExpenseRequest request, CurrentUser caller, CancellationToken ct = default)
     {
-        var userExists = await _db.Users.AnyAsync(u => u.Id == request.UserId, ct);
+        // An employee can only create expenses for themselves.
+        // Admins/Managers may create on behalf of others.
+        var targetUserId = caller.Role == Role.Employee ? caller.Id : request.UserId;
+
+        var userExists = await _db.Users.AnyAsync(u => u.Id == targetUserId, ct);
         if (!userExists)
-            return Result<ExpenseDto>.Validation($"User {request.UserId} does not exist.");
+            return Result<ExpenseDto>.Validation($"User {targetUserId} does not exist.");
 
         var categoryExists = await _db.Categories.AnyAsync(c => c.Id == request.CategoryId, ct);
         if (!categoryExists)
@@ -66,7 +93,7 @@ public class ExpenseService : IExpenseService
 
         var expense = new Expense
         {
-            UserId = request.UserId,
+            UserId = targetUserId,
             CategoryId = request.CategoryId,
             Amount = request.Amount,
             Currency = request.Currency,
@@ -77,19 +104,18 @@ public class ExpenseService : IExpenseService
         _db.Expenses.Add(expense);
         await _db.SaveChangesAsync(ct);
 
-        return await GetByIdAsync(expense.Id, ct);
+        return await GetByIdAsync(expense.Id, caller, ct);
     }
 
     public async Task<Result<ExpenseDto>> UpdateAsync(
-        Guid id,
-        UpdateExpenseRequest request,
-        CancellationToken ct = default)
+        Guid id, UpdateExpenseRequest request, CurrentUser caller, CancellationToken ct = default)
     {
-        var expense = await _db.Expenses.FindAsync(new object[] { id }, ct);
+        // Find it within what the caller can see — prevents editing others' expenses.
+        var expense = await VisibleExpenses(caller).FirstOrDefaultAsync(e => e.Id == id, ct);
         if (expense is null)
-            return Result<ExpenseDto>.NotFound($"Expense {id} not found.");
+            return Result<ExpenseDto>.NotFound($"Expense {id} not found or not accessible.");
 
-        if (expense.Status != Domain.Enums.ExpenseStatus.Draft)
+        if (expense.Status != ExpenseStatus.Draft)
             return Result<ExpenseDto>.Conflict(
                 $"Cannot edit an expense in {expense.Status} status. Only drafts are editable.");
 
@@ -97,24 +123,27 @@ public class ExpenseService : IExpenseService
         if (!categoryExists)
             return Result<ExpenseDto>.Validation($"Category {request.CategoryId} does not exist.");
 
-        expense.CategoryId = request.CategoryId;
-        expense.Amount = request.Amount;
-        expense.Currency = request.Currency;
-        expense.Description = request.Description;
-        expense.ExpenseDate = request.ExpenseDate;
+        // Re-fetch as tracked so EF saves the changes.
+        var tracked = await _db.Expenses.FirstAsync(e => e.Id == id, ct);
+        tracked.CategoryId = request.CategoryId;
+        tracked.Amount = request.Amount;
+        tracked.Currency = request.Currency;
+        tracked.Description = request.Description;
+        tracked.ExpenseDate = request.ExpenseDate;
 
         await _db.SaveChangesAsync(ct);
 
-        return await GetByIdAsync(expense.Id, ct);
+        return await GetByIdAsync(id, caller, ct);
     }
 
-    public async Task<Result<bool>> DeleteAsync(Guid id, CancellationToken ct = default)
+    public async Task<Result<bool>> DeleteAsync(Guid id, CurrentUser caller, CancellationToken ct = default)
     {
-        var expense = await _db.Expenses.FindAsync(new object[] { id }, ct);
-        if (expense is null)
-            return Result<bool>.NotFound($"Expense {id} not found.");
+        var visible = await VisibleExpenses(caller).AnyAsync(e => e.Id == id, ct);
+        if (!visible)
+            return Result<bool>.NotFound($"Expense {id} not found or not accessible.");
 
-        expense.SoftDelete();
+        var tracked = await _db.Expenses.FirstAsync(e => e.Id == id, ct);
+        tracked.SoftDelete();
         await _db.SaveChangesAsync(ct);
 
         return Result<bool>.Success(true);
