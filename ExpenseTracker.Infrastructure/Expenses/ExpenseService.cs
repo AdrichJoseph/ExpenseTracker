@@ -38,21 +38,47 @@ public class ExpenseService : IExpenseService
         return query.Where(e => e.UserId == caller.Id);
     }
 
-    public async Task<IReadOnlyList<ExpenseDto>> GetAllAsync(CurrentUser caller, CancellationToken ct = default)
+    public async Task<PagedResult<ExpenseDto>> GetPagedAsync(
+        ExpenseFilterRequest filter, CurrentUser caller, CancellationToken ct = default)
     {
-        var query =
+        // Build the base join first, then layer conditional Where clauses on top.
+        // Nothing hits the database until CountAsync / ToListAsync.
+        var baseQuery =
             from e in VisibleExpenses(caller)
             join u in _db.Users.AsNoTracking() on e.UserId equals u.Id
             join c in _db.Categories.AsNoTracking() on e.CategoryId equals c.Id
-            orderby e.ExpenseDate descending
-            select new ExpenseDto(
-                e.Id, e.UserId, u.Name, e.CategoryId, c.Name,
-                e.Amount, e.Currency, e.Description, e.ExpenseDate,
-                e.SubmittedDate, e.Status, e.ReceiptBlobUrl,
-                e.ApproverId, e.ApprovedDate, e.RejectionReason,
-                e.CreatedAt, e.UpdatedAt);
+            select new { e, u, c };
 
-        return await query.ToListAsync(ct);
+        if (filter.Status.HasValue)
+            baseQuery = baseQuery.Where(x => x.e.Status == filter.Status.Value);
+
+        if (filter.From.HasValue)
+            baseQuery = baseQuery.Where(x => x.e.ExpenseDate >= filter.From.Value);
+
+        if (filter.To.HasValue)
+            baseQuery = baseQuery.Where(x => x.e.ExpenseDate <= filter.To.Value);
+
+        if (filter.CategoryId.HasValue)
+            baseQuery = baseQuery.Where(x => x.e.CategoryId == filter.CategoryId.Value);
+
+        if (filter.UserId.HasValue)
+            baseQuery = baseQuery.Where(x => x.e.UserId == filter.UserId.Value);
+
+        var totalCount = await baseQuery.CountAsync(ct);
+
+        var items = await baseQuery
+            .OrderByDescending(x => x.e.ExpenseDate)
+            .Skip((filter.Page - 1) * filter.PageSize)
+            .Take(filter.PageSize)
+            .Select(x => new ExpenseDto(
+                x.e.Id, x.e.UserId, x.u.Name, x.e.CategoryId, x.c.Name,
+                x.e.Amount, x.e.Currency, x.e.Description, x.e.ExpenseDate,
+                x.e.SubmittedDate, x.e.Status, x.e.ReceiptBlobUrl,
+                x.e.ApproverId, x.e.ApprovedDate, x.e.RejectionReason,
+                x.e.CreatedAt, x.e.UpdatedAt))
+            .ToListAsync(ct);
+
+        return new PagedResult<ExpenseDto>(items, filter.Page, filter.PageSize, totalCount);
     }
 
     public async Task<Result<ExpenseDto>> GetByIdAsync(Guid id, CurrentUser caller, CancellationToken ct = default)

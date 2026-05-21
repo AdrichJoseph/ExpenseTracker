@@ -34,8 +34,19 @@ public class ExpensesController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<IReadOnlyList<ExpenseDto>>> GetAll(CancellationToken ct)
-        => Ok(await _service.GetAllAsync(GetCaller(), ct));
+    public async Task<ActionResult<PagedResult<ExpenseDto>>> GetAll(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        [FromQuery] ExpenseStatus? status = null,
+        [FromQuery] DateTime? from = null,
+        [FromQuery] DateTime? to = null,
+        [FromQuery] Guid? categoryId = null,
+        [FromQuery] Guid? userId = null,
+        CancellationToken ct = default)
+    {
+        var filter = new ExpenseFilterRequest(page, pageSize, status, from, to, categoryId, userId);
+        return Ok(await _service.GetPagedAsync(filter, GetCaller(), ct));
+    }
 
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<ExpenseDto>> GetById(Guid id, CancellationToken ct)
