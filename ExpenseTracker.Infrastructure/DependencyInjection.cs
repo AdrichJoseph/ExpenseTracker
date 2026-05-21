@@ -1,4 +1,6 @@
+using ExpenseTracker.Application.Approvals;
 using ExpenseTracker.Application.Expenses;
+using ExpenseTracker.Infrastructure.Approvals;
 using ExpenseTracker.Infrastructure.Expenses;
 using ExpenseTracker.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -23,6 +25,7 @@ public static class DependencyInjection
         // The service registration that was missing � this fixes the 500.
         // Interface lives in Application, implementation lives in Infrastructure.
         services.AddScoped<IExpenseService, ExpenseService>();
+        services.AddScoped<IApprovalService, ApprovalService>();
         services.AddScoped<ExpenseTracker.Application.Auth.IAuthService, ExpenseTracker.Infrastructure.Auth.AuthService>();
         services.AddScoped<ExpenseTracker.Infrastructure.Auth.JwtTokenGenerator>();
 

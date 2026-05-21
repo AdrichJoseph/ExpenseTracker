@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using ExpenseTracker.Application.Approvals;
 using ExpenseTracker.Application.Common;
 using ExpenseTracker.Application.Expenses;
 using ExpenseTracker.Application.Expenses.Dtos;
@@ -14,8 +15,13 @@ namespace ExpenseTracker.Api.Controllers;
 public class ExpensesController : ControllerBase
 {
     private readonly IExpenseService _service;
+    private readonly IApprovalService _approvals;
 
-    public ExpensesController(IExpenseService service) => _service = service;
+    public ExpensesController(IExpenseService service, IApprovalService approvals)
+    {
+        _service = service;
+        _approvals = approvals;
+    }
 
     // Reads the caller's id and role out of the JWT claims.
     private CurrentUser GetCaller()
@@ -59,6 +65,11 @@ public class ExpensesController : ControllerBase
             ? NotFound(result.Error)
             : BadRequest(result.Error);
     }
+
+    /// <summary>POST /api/expenses/{id}/submit — moves a Draft expense to Submitted.</summary>
+    [HttpPost("{id:guid}/submit")]
+    public async Task<ActionResult<ExpenseDto>> Submit(Guid id, CancellationToken ct)
+        => MapResult(await _approvals.SubmitAsync(id, GetCaller(), ct));
 
     private ActionResult<T> MapResult<T>(Result<T> result)
     {
