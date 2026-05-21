@@ -1,8 +1,10 @@
 using ExpenseTracker.Application.Approvals;
 using ExpenseTracker.Application.Expenses;
+using ExpenseTracker.Application.Reports;
 using ExpenseTracker.Infrastructure.Approvals;
 using ExpenseTracker.Infrastructure.Expenses;
 using ExpenseTracker.Infrastructure.Persistence;
+using ExpenseTracker.Infrastructure.Reports;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -26,6 +28,7 @@ public static class DependencyInjection
         // Interface lives in Application, implementation lives in Infrastructure.
         services.AddScoped<IExpenseService, ExpenseService>();
         services.AddScoped<IApprovalService, ApprovalService>();
+        services.AddScoped<IReportService, ReportService>();
         services.AddScoped<ExpenseTracker.Application.Auth.IAuthService, ExpenseTracker.Infrastructure.Auth.AuthService>();
         services.AddScoped<ExpenseTracker.Infrastructure.Auth.JwtTokenGenerator>();
 
