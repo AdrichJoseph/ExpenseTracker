@@ -4,7 +4,6 @@ using ExpenseTracker.Application.Expenses;
 using ExpenseTracker.Application.Expenses.Dtos;
 using ExpenseTracker.Domain.Entities;
 using ExpenseTracker.Domain.Enums;
-using ExpenseTracker.Domain.Exceptions;
 using ExpenseTracker.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -58,8 +57,7 @@ public class ApprovalService : IApprovalService
             .Include(e => e.ApprovalHistory)
             .FirstAsync(e => e.Id == expenseId, ct);
 
-        try { expense.Submit(); }
-        catch (DomainException ex) { return Result<ExpenseDto>.Conflict(ex.Message); }
+        expense.Submit();
 
         await _db.SaveChangesAsync(ct);
         return await _expenses.GetByIdAsync(expenseId, caller, ct);
@@ -79,8 +77,7 @@ public class ApprovalService : IApprovalService
             .Include(e => e.ApprovalHistory)
             .FirstAsync(e => e.Id == expenseId, ct);
 
-        try { expense.Approve(caller.Id, comment); }
-        catch (DomainException ex) { return Result<ExpenseDto>.Conflict(ex.Message); }
+        expense.Approve(caller.Id, comment);
 
         await _db.SaveChangesAsync(ct);
         return await _expenses.GetByIdAsync(expenseId, caller, ct);
@@ -103,8 +100,7 @@ public class ApprovalService : IApprovalService
             .Include(e => e.ApprovalHistory)
             .FirstAsync(e => e.Id == expenseId, ct);
 
-        try { expense.Reject(caller.Id, reason); }
-        catch (DomainException ex) { return Result<ExpenseDto>.Conflict(ex.Message); }
+        expense.Reject(caller.Id, reason);
 
         await _db.SaveChangesAsync(ct);
         return await _expenses.GetByIdAsync(expenseId, caller, ct);

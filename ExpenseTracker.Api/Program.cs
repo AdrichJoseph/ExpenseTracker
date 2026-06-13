@@ -1,4 +1,6 @@
 ﻿using System.Text;
+using ExpenseTracker.Api.Filters;
+using ExpenseTracker.Api.Middleware;
 using ExpenseTracker.Application;
 using ExpenseTracker.Infrastructure;
 using ExpenseTracker.Infrastructure.Identity;
@@ -7,10 +9,23 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Serilog;
+using Serilog.Events;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddControllers();
+builder.Host.UseSerilog((context, config) =>
+    config
+        .MinimumLevel.Information()
+        .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
+        .MinimumLevel.Override("Microsoft.EntityFrameworkCore.Database.Command", LogEventLevel.Warning)
+        .Enrich.FromLogContext()
+        .WriteTo.Console()
+        .WriteTo.File("logs/expensetracker-.log",
+            rollingInterval: RollingInterval.Day,
+            retainedFileCountLimit: 30));
+
+builder.Services.AddControllers(o => o.Filters.Add<ValidationFilter>());
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
@@ -81,6 +96,8 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.UseSerilogRequestLogging();
+app.UseMiddleware<ExceptionMiddleware>();
 app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
